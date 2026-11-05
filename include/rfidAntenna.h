@@ -4,7 +4,8 @@
 #include <string>
 #include <vector>
 
-#include <ros/ros.h>
+#include <gazebo_ros/node.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <gazebo/physics/World.hh>
 #include <gazebo/physics/Entity.hh>
@@ -14,8 +15,8 @@
 #include <gazebo/gazebo.hh>
 #include <gazebo/sensors/sensors.hh>
 #include <ignition/math.hh>
-#include <rfid_sensor/Tag.h>
-#include <rfid_sensor/TagArray.h>
+#include <rfid_sensor/msg/tag.hpp>
+#include <rfid_sensor/msg/tag_array.hpp>
 #include <random>
 #include <regex>
 #include <map>
@@ -83,8 +84,8 @@ namespace gazebo {
 				std::cauchy_distribution<double> _optional_dist8;
 			protected: 
 				gazebo::physics::WorldPtr _world;
-				ros::NodeHandle _node_handle;
-				ros::Publisher _event_pub;
+				gazebo_ros::Node::SharedPtr _node_handle;
+				rclcpp::Publisher<rfid_sensor::msg::TagArray>::SharedPtr _event_pub;
 		};
 	} //namespace sensors
 } //namespace gazebo

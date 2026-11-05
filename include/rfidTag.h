@@ -5,7 +5,6 @@
 
 #include <gazebo/gazebo.hh>
 #include <gazebo/sensors/sensors.hh>
-#include "rfidAntenna.h"
 
 namespace gazebo {
   	namespace sensors {

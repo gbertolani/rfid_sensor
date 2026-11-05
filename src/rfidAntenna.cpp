@@ -1,5 +1,8 @@
 #include "rfidAntenna.h"
 
+#include <chrono>
+#include <cmath>
+
 #define lightspeed 299792458
 
 using namespace gazebo;
@@ -26,16 +29,11 @@ void RfidAntanna::Load(SensorPtr _sensor, sdf::ElementPtr _sdf) {
         return;
     }
 
+    _node_handle = gazebo_ros::Node::Get(_sdf);
+
     _world = physics::get_world(this->_antennaSensor->WorldName());
     _antennaEntity = boost::dynamic_pointer_cast<physics::Link>(
             this->_world->EntityByName(this->_antennaSensor->ParentName()));
-
-    // Connect to the sensor update event.
-    _updateConnection = this->_antennaSensor->ConnectUpdated(
-            std::bind(&RfidAntanna::OnUpdate, this));
-
-    // Make sure the parent sensor is active.
-    _antennaSensor->SetActive(true);
 
     // if frequency parameter does NOT exist
     if (!(_sdf->HasElement("frequency"))) {
@@ -108,7 +106,7 @@ void RfidAntanna::Load(SensorPtr _sensor, sdf::ElementPtr _sdf) {
                     _params.push_back(std::stod(temp));
                 else 
                 {
-                    ROS_ERROR("Only doubles sperated by space are supported");
+                    RCLCPP_ERROR(_node_handle->get_logger(), "Only doubles sperated by space are supported");
                     exit(-1);
                 }
                 temp = "";
@@ -122,7 +120,7 @@ void RfidAntanna::Load(SensorPtr _sensor, sdf::ElementPtr _sdf) {
             _params.push_back(std::stod(temp));
         else 
         {
-            ROS_ERROR("Only doubles sperated by space are supported");
+            RCLCPP_ERROR(_node_handle->get_logger(), "Only doubles sperated by space are supported");
             exit(-1);
         }
     }
@@ -145,7 +143,7 @@ void RfidAntanna::Load(SensorPtr _sensor, sdf::ElementPtr _sdf) {
         _optional_dist8 = std::cauchy_distribution<double>(_params[0], _params[1]);
     else if(!(_optional_distribution == "none"))
     {
-        ROS_ERROR("Distributoin not supported");
+        RCLCPP_ERROR(_node_handle->get_logger(), "Distributoin not supported");
         exit(-1);
     }
 
@@ -164,8 +162,6 @@ void RfidAntanna::Load(SensorPtr _sensor, sdf::ElementPtr _sdf) {
 
     // Initialize the node with the antenna name
     node->Init(_antennaSensor->Name());
-
-    _node_handle = ros::NodeHandle("~/"+_antennaSensor->Name());
 
     _lambda = lightspeed / _frequency;
     _meterToPhi = (4 * M_PI) / _lambda;
@@ -186,8 +182,17 @@ void RfidAntanna::Load(SensorPtr _sensor, sdf::ElementPtr _sdf) {
         "\tCommunication Gain: " << _communication_gain << std::endl <<
         "\tLambda " << _lambda << std::endl;
 
-    _event_pub = _node_handle.advertise<rfid_sensor::TagArray>(
-        "data", 10, 10);
+    _event_pub = _node_handle->create_publisher<rfid_sensor::msg::TagArray>(
+        _antennaSensor->Name() + "/data",
+        rclcpp::QoS(10).transient_local()
+    );
+
+    // Connect to the sensor update event.
+    _updateConnection = this->_antennaSensor->ConnectUpdated(
+            std::bind(&RfidAntanna::OnUpdate, this));
+
+    // Make sure the parent sensor is active.
+    _antennaSensor->SetActive(true);
 }
 
 /////////////////////////////////////////////////
@@ -214,7 +219,7 @@ void RfidAntanna::OnUpdate() {
     double actual_range = _range;
     actual_range = actual_range * abs(1 + _radius_distribution(_generator));
 
-    std::vector<rfid_sensor::Tag> msgArray;
+    std::vector<rfid_sensor::msg::Tag> msgArray;
 
     ignition::math::Pose3d world_antenna_position = this->_antennaSensor->Pose() 
             + this->_antennaEntity.lock()->WorldPose();
@@ -255,7 +260,7 @@ void RfidAntanna::OnUpdate() {
         double rssi = round(40 * log10(_communication_gain * (_lambda /
                         (4.0 * M_PI * dist)) + abs(_noiserssi * _distribution(_generator))));
         
-        rfid_sensor::Tag msg;
+        rfid_sensor::msg::Tag msg;
         msg.name = (it->second)->ParentName();
         msg.dist = dist;
         msg.phi = phi;
@@ -263,20 +268,20 @@ void RfidAntanna::OnUpdate() {
         msgArray.push_back(msg);
     }
 
-    rfid_sensor::TagArray msgToSend;
-    std_msgs::Header header;
+    rfid_sensor::msg::TagArray msgToSend;
+    std_msgs::msg::Header header;
     header.frame_id = "world";
-    header.stamp = ros::Time::now();
+    header.stamp = _node_handle->now();
     msgToSend.header = header;
     msgToSend.tags = msgArray;
     msgToSend.ntags = msgArray.size();
-    msgToSend.antennaPose.position.x = world_antenna_position.Pos().X();
-    msgToSend.antennaPose.position.y = world_antenna_position.Pos().Y();
-    msgToSend.antennaPose.position.z = world_antenna_position.Pos().Z();
-    msgToSend.antennaPose.orientation.w = world_antenna_position.Rot().W();
-    msgToSend.antennaPose.orientation.x = world_antenna_position.Rot().X();
-    msgToSend.antennaPose.orientation.y = world_antenna_position.Rot().Y();
-    msgToSend.antennaPose.orientation.z = world_antenna_position.Rot().Z();
+    msgToSend.antenna_pose.position.x = world_antenna_position.Pos().X();
+    msgToSend.antenna_pose.position.y = world_antenna_position.Pos().Y();
+    msgToSend.antenna_pose.position.z = world_antenna_position.Pos().Z();
+    msgToSend.antenna_pose.orientation.w = world_antenna_position.Rot().W();
+    msgToSend.antenna_pose.orientation.x = world_antenna_position.Rot().X();
+    msgToSend.antenna_pose.orientation.y = world_antenna_position.Rot().Y();
+    msgToSend.antenna_pose.orientation.z = world_antenna_position.Rot().Z();
 
-    _event_pub.publish(msgToSend);
+    _event_pub->publish(msgToSend);
 }
